@@ -1,5 +1,5 @@
 provider "google" {
-  credentials = file(".terraform/csye6225-nagalekha-ramesh-cdb5475d775e.json")
+  credentials = file(var.service_account_file_path)
   project     = var.project_id
   region      = var.region
 }
@@ -30,6 +30,11 @@ resource "google_compute_route" "webapp_route" {
   network           = google_compute_network.vpc.self_link
   dest_range        = var.dest_range
   next_hop_gateway   = var.next_hop_gateway
+}
+
+variable "service_account_file_path" {
+  description = "Filepath of service-account-key.json"
+  type        = string
 }
 
 variable "dest_range" {
