@@ -36,9 +36,9 @@ resource "google_compute_route" "webapp_route" {
   next_hop_gateway = var.vpcs[count.index].next_hop_gateway
 }
 
-resource "google_compute_firewall" "allow_ssh_from_iap" {
+resource "google_compute_firewall" "allow_8080" {
   count   = length(var.vpcs)
-  name    = "allow-ssh-from-iap-${count.index}"
+  name    = "allow-8080-${count.index}"
   network = google_compute_network.vpc[count.index].name
 
   allow {
@@ -48,6 +48,24 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
 
   source_ranges = var.vpcs[count.index].ssh_source_ranges
   target_tags   = var.vpcs[count.index].instance_tags
+
+  priority = 1000
+}
+
+resource "google_compute_firewall" "deny_all" {
+  count   = length(var.vpcs)
+  name    = "deny-all-${count.index}"
+  network = google_compute_network.vpc[count.index].name
+
+  allow {
+    protocol = "all"
+    ports    = []
+  }
+
+  source_ranges = var.vpcs[count.index].ssh_source_ranges
+  target_tags   = var.vpcs[count.index].instance_tags
+
+  priority = 2000
 }
 
 resource "google_compute_instance" "webapp_instance" {
@@ -70,7 +88,7 @@ resource "google_compute_instance" "webapp_instance" {
     access_config {}
   }
   tags       = var.vpcs[count.index].instance_tags
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_ssh_from_iap]
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_8080, google_compute_firewall.deny_all]
 
 }
 
