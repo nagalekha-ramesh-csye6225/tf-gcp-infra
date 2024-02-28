@@ -1,7 +1,6 @@
 provider "google" {
   credentials = file(var.service_account_file_path)
   project     = var.project_id
-  region      = var.region
 }
 
 resource "google_compute_network" "vpc" {
@@ -17,7 +16,7 @@ resource "google_compute_subnetwork" "webapp" {
   name          = var.vpcs[count.index].webapp_subnet_name
   ip_cidr_range = var.vpcs[count.index].webapp_subnet_cidr
   network       = google_compute_network.vpc[count.index].self_link
-  region        = var.region
+  region        = var.vpcs[count.index].region
 }
 
 resource "google_compute_subnetwork" "db" {
@@ -25,7 +24,7 @@ resource "google_compute_subnetwork" "db" {
   name          = var.vpcs[count.index].db_subnet_name
   ip_cidr_range = var.vpcs[count.index].db_subnet_cidr
   network       = google_compute_network.vpc[count.index].self_link
-  region        = var.region
+  region        = var.vpcs[count.index].region
 }
 
 resource "google_compute_route" "webapp_route" {
@@ -36,9 +35,9 @@ resource "google_compute_route" "webapp_route" {
   next_hop_gateway = var.vpcs[count.index].next_hop_gateway
 }
 
-resource "google_compute_firewall" "allow_ssh_from_iap" {
+resource "google_compute_firewall" "allow_8080" {
   count   = length(var.vpcs)
-  name    = "allow-ssh-from-iap-${count.index}"
+  name    = "allow-8080-${count.index}"
   network = google_compute_network.vpc[count.index].name
 
   allow {
@@ -48,6 +47,24 @@ resource "google_compute_firewall" "allow_ssh_from_iap" {
 
   source_ranges = var.vpcs[count.index].ssh_source_ranges
   target_tags   = var.vpcs[count.index].instance_tags
+
+  priority = var.vpcs[count.index].allow_8080_priority
+}
+
+resource "google_compute_firewall" "deny_all" {
+  count   = length(var.vpcs)
+  name    = "deny-all-${count.index}"
+  network = google_compute_network.vpc[count.index].name
+
+  deny {
+    protocol = "all"
+    ports    = []
+  }
+
+  source_ranges = var.vpcs[count.index].ssh_source_ranges
+  target_tags   = var.vpcs[count.index].instance_tags
+
+  priority = var.vpcs[count.index].deny_all_priority
 }
 
 resource "google_compute_instance" "webapp_instance" {
@@ -70,7 +87,7 @@ resource "google_compute_instance" "webapp_instance" {
     access_config {}
   }
   tags       = var.vpcs[count.index].instance_tags
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_ssh_from_iap]
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_8080, google_compute_firewall.deny_all]
 
 }
 
@@ -84,14 +101,10 @@ variable "project_id" {
   type        = string
 }
 
-variable "region" {
-  description = "The GCP region to create resources in"
-  type        = string
-}
-
 variable "vpcs" {
   description = "List of configurations for multiple VPCs"
   type = list(object({
+    region                          = string
     vpc_name                        = string
     webapp_subnet_name              = string
     webapp_subnet_cidr              = string
@@ -111,6 +124,8 @@ variable "vpcs" {
     boot_disk_image_name            = string
     boot_disk_type                  = string
     boot_disk_size                  = number
+    allow_8080_priority             = number
+    deny_all_priority               = number
   }))
   default = []
 }

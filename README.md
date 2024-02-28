@@ -65,6 +65,19 @@ My IaaC using Terraform for: [CYSE6225 Network Structures &amp; Cloud Computing]
 6. Identity and Access Management (IAM) API
 7. Cloud DNS API
 8. Cloud Build API
+9. Service Networking API
+10. Cloud Resource Manager API
+11. Service Usage API
+
+## Enabled following roles for Service Account
+Using App Engine default Service Account
+1. Cloud SQL Admin
+2. Cloud SQL Client
+3. Compute Network Admin
+4. Compute Security Admin
+5. Service Networking Admin
+6. Service Networking Service Agent
+7. Service Usage Admin
 
 ## References:
 1. [Install Chocolatey](https://docs.chocolatey.org/en-us/choco/setup)
