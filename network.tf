@@ -12,12 +12,13 @@ resource "google_compute_network" "vpc" {
 }
 
 resource "google_compute_subnetwork" "webapp" {
-  count                    = length(var.vpcs)
-  name                     = var.vpcs[count.index].webapp_subnet_name
-  ip_cidr_range            = var.vpcs[count.index].webapp_subnet_cidr
-  network                  = google_compute_network.vpc[count.index].self_link
-  region                   = var.vpcs[count.index].region
-  private_ip_google_access = var.vpcs[count.index].private_ip_google_access_webapp_subnet
+  count         = length(var.vpcs)
+  name          = var.vpcs[count.index].webapp_subnet_name
+  ip_cidr_range = var.vpcs[count.index].webapp_subnet_cidr
+  network       = google_compute_network.vpc[count.index].self_link
+  region        = var.vpcs[count.index].region
+  # private_ip_google_access = var.vpcs[count.index].private_ip_google_access_webapp_subnet
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_compute_subnetwork" "db" {
@@ -27,6 +28,8 @@ resource "google_compute_subnetwork" "db" {
   network                  = google_compute_network.vpc[count.index].self_link
   region                   = var.vpcs[count.index].region
   private_ip_google_access = var.vpcs[count.index].private_ip_google_access_db_subnet
+
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_compute_route" "webapp_route" {
@@ -35,15 +38,19 @@ resource "google_compute_route" "webapp_route" {
   network          = google_compute_network.vpc[count.index].self_link
   dest_range       = var.vpcs[count.index].dest_range
   next_hop_gateway = var.vpcs[count.index].next_hop_gateway
+
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_compute_global_address" "private_ip_address" {
   count         = length(var.vpcs)
   name          = "private-ip-address-${count.index}"
-  purpose       = "VPC_PEERING"
-  address_type  = "INTERNAL"
-  prefix_length = 24
+  purpose       = var.vpcs[count.index].private_ip_address_purpose
+  address_type  = var.vpcs[count.index].private_ip_address_address_type
+  prefix_length = var.vpcs[count.index].private_ip_address_prefix_length
   network       = google_compute_network.vpc[count.index].self_link
+
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_service_networking_connection" "private_vpc_connection" {
@@ -51,8 +58,10 @@ resource "google_service_networking_connection" "private_vpc_connection" {
   network                 = google_compute_network.vpc[count.index].self_link
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_address[count.index].name]
-  depends_on              = [google_compute_network.vpc]
-  deletion_policy         = "ABANDON"
+
+  deletion_policy = "ABANDON"
+
+  depends_on = [google_compute_network.vpc, google_compute_global_address.private_ip_address]
 }
 
 resource "random_id" "db_name_suffix" {
@@ -61,48 +70,54 @@ resource "random_id" "db_name_suffix" {
 
 resource "google_sql_database_instance" "cloud_sql_instance" {
 
-  count            = length(var.vpcs)
-  name             = "private-sql-instance-${random_id.db_name_suffix.hex}"
-  region           = var.vpcs[count.index].region
-  database_version = var.vpcs[count.index].postgres_database_version
-  # root_password       = var.vpcs[count.index].postgres_root_password
+  count               = length(var.vpcs)
+  name                = "private-sql-instance-${random_id.db_name_suffix.hex}"
+  region              = var.vpcs[count.index].region
+  database_version    = var.vpcs[count.index].postgres_database_version
+  root_password       = var.vpcs[count.index].postgres_root_password
   deletion_protection = var.vpcs[count.index].cloud_sql_instance_deletion_protection
 
-  depends_on = [google_service_networking_connection.private_vpc_connection, google_compute_network.vpc]
-
   settings {
-    tier              = "db-f1-micro"
+    tier              = var.vpcs[count.index].cloud_sql_instance_tier
     availability_type = var.vpcs[count.index].cloud_sql_instance_availability_type
     disk_type         = var.vpcs[count.index].cloud_sql_instance_disk_type
     disk_size         = var.vpcs[count.index].cloud_sql_instance_disk_size
     ip_configuration {
       ipv4_enabled                                  = var.vpcs[count.index].ipv4_enabled
       private_network                               = google_compute_network.vpc[count.index].self_link
-      enable_private_path_for_google_cloud_services = true
+      enable_private_path_for_google_cloud_services = var.vpcs[count.index].db_enable_privte_path
     }
   }
+
+  depends_on = [google_service_networking_connection.private_vpc_connection, google_compute_network.vpc]
+
 }
 
 # Creating Cloud SQL database as per guidelines
 resource "google_sql_database" "webapp_db" {
   count    = length(var.vpcs)
-  name     = "webapp-db-${count.index}"
+  name     = var.vpcs[count.index].database_name
   instance = google_sql_database_instance.cloud_sql_instance[count.index].name
+
+  depends_on = [google_sql_database_instance.cloud_sql_instance]
+}
+
+resource "random_password" "webapp_db_password" {
+  length  = 10
+  special = true
 }
 
 # Cloud SQL database user as per guidelines
 resource "google_sql_user" "webapp_user" {
   count    = length(var.vpcs)
-  name     = "webapp-user-${count.index}"
+  name     = var.vpcs[count.index].database_user_name
   instance = google_sql_database_instance.cloud_sql_instance[count.index].name
   password = random_password.webapp_db_password.result
+
+  depends_on = [google_sql_database_instance.cloud_sql_instance, random_password.webapp_db_password]
 }
 
-# Generating random password for the user
-resource "random_password" "webapp_db_password" {
-  length  = 10
-  special = true
-}
+
 
 resource "google_compute_firewall" "allow_8080" {
   count   = length(var.vpcs)
@@ -118,6 +133,8 @@ resource "google_compute_firewall" "allow_8080" {
   target_tags   = var.vpcs[count.index].instance_tags
 
   priority = var.vpcs[count.index].allow_8080_priority
+
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_compute_firewall" "deny_all" {
@@ -134,6 +151,8 @@ resource "google_compute_firewall" "deny_all" {
   target_tags   = var.vpcs[count.index].instance_tags
 
   priority = var.vpcs[count.index].deny_all_priority
+
+  depends_on = [google_compute_network.vpc]
 }
 
 resource "google_compute_instance" "webapp_instance" {
@@ -158,25 +177,7 @@ resource "google_compute_instance" "webapp_instance" {
   tags       = var.vpcs[count.index].instance_tags
   depends_on = [google_compute_subnetwork.webapp, google_compute_subnetwork.db, google_compute_firewall.allow_8080, google_compute_firewall.deny_all, google_sql_user.webapp_user, google_sql_database.webapp_db]
 
-  metadata = {
-    startup-script = <<-EOT
-#!/bin/bash
-set -e
-sudo touch /opt/csye6225/webapp/.env
-
-sudo echo "PORT=${var.env_port}" > /opt/csye6225/webapp/.env
-sudo echo "DATABASE_NAME=${var.vpcs[count.index].database_name}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_USERNAME=${var.vpcs[count.index].database_user_name}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_PASSWORD=${random_password.webapp_db_password.result}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].private_ip_address}" >> /opt/csye6225/webapp/.env
-sudo echo "DATABASE_DIALECT=${var.env_db_dialect}" >> /opt/csye6225/webapp/.env
-sudo echo "DROP_DATABASE=${var.env_db_drop_db}" >> /opt/csye6225/webapp/.env
-
-sudo systemctl restart webapp
-
-sudo systemctl daemon-reload
-EOT
-  }
+  metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.vpcs[count.index].database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.vpcs[count.index].database_user_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password.result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].private_ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
 
 }
 
@@ -226,6 +227,11 @@ variable "vpcs" {
     cloud_sql_instance_disk_size           = number
     database_name                          = string
     database_user_name                     = string
+    private_ip_address_purpose             = string
+    private_ip_address_address_type        = string
+    private_ip_address_prefix_length       = number
+    cloud_sql_instance_tier                = string
+    db_enable_privte_path                  = bool
 
   }))
   default = []
