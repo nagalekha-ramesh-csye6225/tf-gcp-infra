@@ -172,6 +172,8 @@ sudo echo "DATABASE_HOST=${google_sql_database_instance.cloud_sql_instance[count
 sudo echo "DATABASE_DIALECT=${var.env_db_dialect}" >> /opt/csye6225/webapp/.env
 sudo echo "DROP_DATABASE=${var.env_db_drop_db}" >> /opt/csye6225/webapp/.env
 
+sudo systemctl restart webapp
+
 sudo systemctl daemon-reload
 EOT
   }
