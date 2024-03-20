@@ -150,6 +150,34 @@ resource "google_compute_firewall" "deny_all" {
   depends_on = [google_compute_network.vpc]
 }
 
+resource "google_service_account" "service_account" {
+  account_id                   = var.service_account_account_id
+  display_name                 = var.service_account_display_name
+  create_ignore_already_exists = var.service_account_create_ignore_already_exists
+}
+
+resource "google_project_iam_binding" "service_account_logging_admin" {
+  project = var.project_id
+  role    = var.service_account_logging_admin_role
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+
+  depends_on = [google_service_account.service_account]
+}
+
+resource "google_project_iam_binding" "service_account_monitoring_metric_writer" {
+  project = var.project_id
+  role    = var.service_account_monitoring_metric_writer_role
+
+  members = [
+    "serviceAccount:${google_service_account.service_account.email}"
+  ]
+
+  depends_on = [google_service_account.service_account]
+}
+
 resource "google_compute_instance" "webapp_instance" {
   count        = length(var.vpcs)
   name         = "webapp-instance-${count.index}"
@@ -174,8 +202,15 @@ resource "google_compute_instance" "webapp_instance" {
 
   }
 
+  allow_stopping_for_update = true
+
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = var.vpcs[count.index].vm_instance_service_account_block_scope
+  }
+
   tags       = var.vpcs[count.index].instance_tags
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_8080, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_user]
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_8080, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_user, google_service_account.service_account, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer]
 
   metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.vpcs[count.index].database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.vpcs[count.index].database_user_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password[count.index].result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.cloud_sql_instance[count.index].ip_address.0.ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
 
@@ -207,53 +242,54 @@ variable "project_id" {
 variable "vpcs" {
   description = "List of configurations for multiple VPCs"
   type = list(object({
-    region                                 = string
-    vpc_name                               = string
-    webapp_subnet_name                     = string
-    webapp_subnet_cidr                     = string
-    db_subnet_name                         = string
-    db_subnet_cidr                         = string
-    routing_mode                           = string
-    dest_range                             = string
-    auto_create_subnetworks                = bool
-    delete_default_routes_on_create        = bool
-    next_hop_gateway                       = string
-    vpc_route_webapp_route_priority        = number
-    protocol                               = string
-    http_ports                             = list(string)
-    ssh_source_ranges                      = list(string)
-    instance_tags                          = list(string)
-    machine_type                           = string
-    zone                                   = string
-    boot_disk_image_name                   = string
-    boot_disk_type                         = string
-    boot_disk_size                         = number
-    allow_8080_priority                    = string
-    deny_all_priority                      = string
-    private_ip_google_access_webapp_subnet = bool
-    private_ip_google_access_db_subnet     = bool
-    google_service_nw_connection_service   = string
-    postgres_database_version              = string
-    postgres_root_password                 = string
-    cloud_sql_instance_deletion_protection = bool
-    ipv4_enabled                           = bool
-    cloud_sql_instance_availability_type   = string
-    cloud_sql_instance_disk_type           = string
-    cloud_sql_instance_disk_size           = number
-    database_name                          = string
-    password_length                        = number
-    password_includes_special              = bool
-    password_override_special              = string
-    database_user_name                     = string
-    private_ip_address_purpose             = string
-    private_ip_address_address_type        = string
-    private_ip_address_prefix_length       = number
-    cloud_sql_instance_tier                = string
-    db_enable_private_path                 = bool
-    domain_name                            = string
-    existing_managed_zone                  = string
-    dns_record_ttl                         = number
-    dns_record_type                        = string
+    region                                  = string
+    vpc_name                                = string
+    webapp_subnet_name                      = string
+    webapp_subnet_cidr                      = string
+    db_subnet_name                          = string
+    db_subnet_cidr                          = string
+    routing_mode                            = string
+    dest_range                              = string
+    auto_create_subnetworks                 = bool
+    delete_default_routes_on_create         = bool
+    next_hop_gateway                        = string
+    vpc_route_webapp_route_priority         = number
+    protocol                                = string
+    http_ports                              = list(string)
+    ssh_source_ranges                       = list(string)
+    instance_tags                           = list(string)
+    machine_type                            = string
+    zone                                    = string
+    boot_disk_image_name                    = string
+    boot_disk_type                          = string
+    boot_disk_size                          = number
+    allow_8080_priority                     = string
+    deny_all_priority                       = string
+    private_ip_google_access_webapp_subnet  = bool
+    private_ip_google_access_db_subnet      = bool
+    google_service_nw_connection_service    = string
+    postgres_database_version               = string
+    postgres_root_password                  = string
+    cloud_sql_instance_deletion_protection  = bool
+    ipv4_enabled                            = bool
+    cloud_sql_instance_availability_type    = string
+    cloud_sql_instance_disk_type            = string
+    cloud_sql_instance_disk_size            = number
+    database_name                           = string
+    password_length                         = number
+    password_includes_special               = bool
+    password_override_special               = string
+    database_user_name                      = string
+    private_ip_address_purpose              = string
+    private_ip_address_address_type         = string
+    private_ip_address_prefix_length        = number
+    cloud_sql_instance_tier                 = string
+    db_enable_private_path                  = bool
+    domain_name                             = string
+    existing_managed_zone                   = string
+    dns_record_ttl                          = number
+    dns_record_type                         = string
+    vm_instance_service_account_block_scope = list(string)
   }))
   default = []
 }
@@ -271,5 +307,30 @@ variable "env_db_dialect" {
 variable "env_db_drop_db" {
   description = "ENV Drop DB"
   type        = bool
+}
+
+variable "service_account_account_id" {
+  description = "Account Id"
+  type        = string
+}
+
+variable "service_account_display_name" {
+  description = "Service Account Display Name"
+  type        = string
+}
+
+variable "service_account_create_ignore_already_exists" {
+  description = "Service Account Create Ignore Already Exists"
+  type        = bool
+}
+
+variable "service_account_logging_admin_role" {
+  description = "Service Account Logging Admin Role"
+  type        = string
+}
+
+variable "service_account_monitoring_metric_writer_role" {
+  description = "Service Account Monitoring Metric Writer Role"
+  type        = string
 }
 
