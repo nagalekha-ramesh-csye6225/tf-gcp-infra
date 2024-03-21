@@ -202,7 +202,7 @@ resource "google_compute_instance" "webapp_instance" {
 
   }
 
-  allow_stopping_for_update = true
+  allow_stopping_for_update = var.vpcs[count.index].vm_instance_allow_stopping_for_update
 
   service_account {
     email  = google_service_account.service_account.email
@@ -290,6 +290,7 @@ variable "vpcs" {
     dns_record_ttl                          = number
     dns_record_type                         = string
     vm_instance_service_account_block_scope = list(string)
+    vm_instance_allow_stopping_for_update   = bool
   }))
   default = []
 }
