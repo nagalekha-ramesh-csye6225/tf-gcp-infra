@@ -350,6 +350,7 @@ resource "google_cloudfunctions2_function" "function" {
       DATABASE_USERNAME       = var.database.database_user
       DATABASE_PASSWORD       = random_password.webapp_db_password.result
       DATABASE_HOST           = google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address
+      VERIFICATION_LINK_TIME_WINDOW = var.cloud_function.service_config.environment_variables.VERIFICATION_LINK_TIME_WINDOW
     }
     available_memory                 = var.cloud_function.service_config.available_memory
     max_instance_request_concurrency = var.cloud_function.service_config.max_instance_request_concurrency
@@ -607,6 +608,7 @@ variable "cloud_function" {
         MAILGUN_DOMAIN    = string
         MAILGUN_FROM      = string
         VERIFY_EMAIL_LINK = string
+        VERIFICATION_LINK_TIME_WINDOW = number
       })
       timeout_seconds                  = number
       available_memory                 = string
