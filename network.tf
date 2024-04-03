@@ -540,6 +540,7 @@ resource "google_compute_backend_service" "webapp_load_balancer" {
   load_balancing_scheme = var.webapp_load_balancer.load_balancing_scheme
   timeout_sec           = var.webapp_load_balancer.timeout_sec
   enable_cdn            = var.webapp_load_balancer.enable_cdn
+  # locality_lb_policy    = var.webapp_load_balancer.locality_lb_policy
 
   # custom_request_headers  = ["X-Client-Geo-Location: {client_region_subdivision}, {client_city}"]
   # custom_response_headers = ["X-Cache-Hit: {cdn_cache_status}"]
@@ -944,6 +945,7 @@ variable "webapp_load_balancer" {
     load_balancing_scheme = string
     timeout_sec           = number
     enable_cdn            = bool
+    locality_lb_policy    = string
 
     backend = object({
       balancing_mode  = string
