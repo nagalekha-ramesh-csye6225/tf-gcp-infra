@@ -199,49 +199,50 @@ resource "google_dns_record_set" "dns_record" {
   managed_zone = var.dns_record.managed_zone_dns_name
   ttl          = var.dns_record.ttl
   type         = var.dns_record.type
-  rrdatas      = [google_compute_instance.webapp_instance[count.index].network_interface[0].access_config[0].nat_ip]
+  # rrdatas      = [google_compute_instance.webapp_instance[count.index].network_interface[0].access_config[0].nat_ip]
+  rrdatas = [google_compute_global_address.forward_address[count.index].address]
 
-
-  depends_on = [google_compute_instance.webapp_instance]
+  # depends_on = [google_compute_instance.webapp_instance]
+  depends_on = [google_compute_global_address.forward_address, google_compute_global_address.private_ip_address, google_compute_region_instance_template.webapp_instance_template]
 }
 
-resource "google_compute_instance" "webapp_instance" {
-  count        = var.replica
-  name         = "webapp-instance-${count.index}"
-  machine_type = var.compute_engine.compute_engine_machine_type
-  zone         = var.compute_engine.compute_engine_machine_zone
+# resource "google_compute_instance" "webapp_instance" {
+#   count        = var.replica
+#   name         = "webapp-instance-${count.index}"
+#   machine_type = var.compute_engine.compute_engine_machine_type
+#   zone         = var.compute_engine.compute_engine_machine_zone
 
-  boot_disk {
-    initialize_params {
-      image = var.compute_engine.boot_disk_image
-      type  = var.compute_engine.boot_disk_type
-      size  = var.compute_engine.boot_disk_size
-    }
-  }
+#   boot_disk {
+#     initialize_params {
+#       image = var.compute_engine.boot_disk_image
+#       type  = var.compute_engine.boot_disk_type
+#       size  = var.compute_engine.boot_disk_size
+#     }
+#   }
 
-  network_interface {
-    network    = google_compute_network.vpc[count.index].self_link
-    subnetwork = google_compute_subnetwork.webapp[count.index].self_link
+#   network_interface {
+#     network    = google_compute_network.vpc[count.index].self_link
+#     subnetwork = google_compute_subnetwork.webapp[count.index].self_link
 
-    access_config {
+#     access_config {
 
-    }
+#     }
 
-  }
+#   }
 
-  allow_stopping_for_update = var.compute_engine.compute_engine_allow_stopping_for_update
+#   allow_stopping_for_update = var.compute_engine.compute_engine_allow_stopping_for_update
 
-  service_account {
-    email  = google_service_account.service_account.email
-    scopes = var.compute_engine.compute_engine_service_account_scopes
-  }
+#   service_account {
+#     email  = google_service_account.service_account.email
+#     scopes = var.compute_engine.compute_engine_service_account_scopes
+#   }
 
-  tags       = [var.compute_engine.compute_engine_webapp_tag]
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector]
+#   tags       = [var.compute_engine.compute_engine_webapp_tag]
+#   depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector]
 
-  metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.database.database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.database.database_user}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password.result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo echo \"TOPIC_VERIFY_EMAIL=${var.env_topic_verify_email}\" >> /opt/csye6225/webapp/.env\nsudo echo \"VERIFY_EMAIL_EXPIRY_MILLISECONDS=${var.env_verify_email_expiry_milliseconds}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
+#   metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.database.database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.database.database_user}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password.result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo echo \"TOPIC_VERIFY_EMAIL=${var.env_topic_verify_email}\" >> /opt/csye6225/webapp/.env\nsudo echo \"VERIFY_EMAIL_EXPIRY_MILLISECONDS=${var.env_verify_email_expiry_milliseconds}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
 
-}
+# }
 
 resource "google_sql_database_instance" "webapp_cloudsql_instance" {
   name                = var.database.name
@@ -342,14 +343,14 @@ resource "google_cloudfunctions2_function" "function" {
   service_config {
     timeout_seconds = var.cloud_function.service_config.timeout_seconds
     environment_variables = {
-      MAILGUN_API_KEY         = var.cloud_function.service_config.environment_variables.MAILGUN_API_KEY
-      MAILGUN_DOMAIN_NAME     = var.cloud_function.service_config.environment_variables.MAILGUN_DOMAIN
-      MAILGUN_FROM_ADDRESS    = var.cloud_function.service_config.environment_variables.MAILGUN_FROM
-      VERIFICATION_EMAIL_LINK = var.cloud_function.service_config.environment_variables.VERIFY_EMAIL_LINK
-      DATABASE_NAME           = var.database.database_name
-      DATABASE_USERNAME       = var.database.database_user
-      DATABASE_PASSWORD       = random_password.webapp_db_password.result
-      DATABASE_HOST           = google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address
+      MAILGUN_API_KEY               = var.cloud_function.service_config.environment_variables.MAILGUN_API_KEY
+      MAILGUN_DOMAIN_NAME           = var.cloud_function.service_config.environment_variables.MAILGUN_DOMAIN
+      MAILGUN_FROM_ADDRESS          = var.cloud_function.service_config.environment_variables.MAILGUN_FROM
+      VERIFICATION_EMAIL_LINK       = var.cloud_function.service_config.environment_variables.VERIFY_EMAIL_LINK
+      DATABASE_NAME                 = var.database.database_name
+      DATABASE_USERNAME             = var.database.database_user
+      DATABASE_PASSWORD             = random_password.webapp_db_password.result
+      DATABASE_HOST                 = google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address
       VERIFICATION_LINK_TIME_WINDOW = var.cloud_function.service_config.environment_variables.VERIFICATION_LINK_TIME_WINDOW
     }
     available_memory                 = var.cloud_function.service_config.available_memory
@@ -374,7 +375,7 @@ resource "google_cloudfunctions2_function" "function" {
     service_account_email = google_service_account.service_account.email
   }
 
-  depends_on = [google_sql_database_instance.webapp_cloudsql_instance, google_pubsub_topic.verify_email_topic, google_compute_instance.webapp_instance]
+  depends_on = [google_sql_database_instance.webapp_cloudsql_instance, google_pubsub_topic.verify_email_topic, google_compute_region_instance_template.webapp_instance_template]
 }
 
 resource "google_cloud_run_service_iam_member" "cloud_run_invoker" {
@@ -387,6 +388,195 @@ resource "google_cloud_run_service_iam_member" "cloud_run_invoker" {
 
   depends_on = [google_cloudfunctions2_function.function, google_service_account.service_account]
 }
+
+//Assignment-08 Load Balancing changes
+resource "google_compute_managed_ssl_certificate" "webapp_ssl" {
+  name = "webapp-ssl-certificate"
+
+  managed {
+    domains = ["nagalekha.me."]
+  }
+}
+
+resource "google_compute_global_address" "forward_address" {
+  count   = var.replica
+  project = var.project_id
+  name    = "load-address"
+}
+
+resource "google_compute_region_instance_template" "webapp_instance_template" {
+  count          = var.replica
+  name           = "webapp-template"
+  machine_type   = "e2-medium"
+  can_ip_forward = false
+  region         = var.region
+  tags           = [var.compute_engine.compute_engine_webapp_tag]
+
+  disk {
+    source_image = var.compute_engine.boot_disk_image
+    auto_delete  = true
+    boot         = true
+    disk_size_gb = var.compute_engine.boot_disk_size
+    disk_type    = var.compute_engine.boot_disk_type
+
+  }
+  reservation_affinity {
+    type = "ANY_RESERVATION"
+  }
+
+  network_interface {
+    network    = google_compute_network.vpc[count.index].self_link
+    subnetwork = google_compute_subnetwork.webapp[count.index].self_link
+    access_config {
+
+    }
+  }
+
+  scheduling {
+    preemptible       = false
+    automatic_restart = true
+  } //do not need verify
+
+  metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.database.database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.database.database_user}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password.result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo echo \"TOPIC_VERIFY_EMAIL=${var.env_topic_verify_email}\" >> /opt/csye6225/webapp/.env\nsudo echo \"VERIFY_EMAIL_EXPIRY_MILLISECONDS=${var.env_verify_email_expiry_milliseconds}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
+
+  service_account {
+    email  = google_service_account.service_account.email
+    scopes = var.compute_engine.compute_engine_service_account_scopes
+  }
+
+  labels = {
+    gce-service-proxy = "on"
+  } // not required
+  //add depends on cloud sql, sql user, compute address, ser acc,  
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector]
+}
+
+resource "google_compute_health_check" "webapp_autohealing" {
+  name                = "webapp-autohealing"
+  check_interval_sec  = 5
+  timeout_sec         = 5
+  healthy_threshold   = 2
+  unhealthy_threshold = 2 # 50 seconds
+
+  http_health_check {
+    port_name    = "http"
+    request_path = "/healthz"
+    port         = "8080"
+  }
+}
+
+resource "google_compute_region_instance_group_manager" "webapp_instance_group" {
+  count                            = var.replica
+  name                             = "webapp-instance-group"
+  base_instance_name               = "webapp"
+  description                      = "Terraform instance group"
+  region                           = var.region
+  distribution_policy_zones        = ["us-west4-a", "us-west4-b", "us-west4-c"]
+  distribution_policy_target_shape = "EVEN"
+
+  version {
+    instance_template = google_compute_region_instance_template.webapp_instance_template[count.index].self_link
+  }
+  //target_size = 2
+  named_port {
+    name = "http"
+    port = 8080
+  }
+  auto_healing_policies {
+    health_check      = google_compute_health_check.webapp_autohealing.self_link // check with id or self link
+    initial_delay_sec = 300
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+  depends_on = [google_compute_region_instance_template.webapp_instance_template, google_compute_health_check.webapp_autohealing]
+}
+
+resource "google_compute_region_autoscaler" "webapp_autoscaler" {
+  count  = var.replica
+  name   = "my-region-autoscaler"
+  region = var.region
+  target = google_compute_region_instance_group_manager.webapp_instance_group[count.index].id
+
+  autoscaling_policy {
+    //mode = "On: add and remove instances to the group"
+    max_replicas    = 9
+    min_replicas    = 3
+    cooldown_period = 60
+
+    cpu_utilization {
+      target = 0.05
+    }
+  }
+
+}
+
+resource "google_compute_firewall" "default" {
+  count     = var.replica
+  name      = "health-check-firewall"
+  direction = "INGRESS"
+  network   = google_compute_network.vpc[count.index].self_link
+  //source_ranges = [google_compute_global_address.forward_address[count.index].address]
+
+  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+
+  allow {
+    protocol = "tcp"
+    ports    = ["8080"] //should be 443
+  }
+  target_tags = [var.compute_engine.compute_engine_webapp_tag]
+}
+
+# backend service with custom request and response headers
+resource "google_compute_backend_service" "webapp_load_balancer" {
+  count                 = var.replica
+  name                  = "webapp-backend-service"
+  protocol              = "HTTP"
+  port_name             = "http"
+  load_balancing_scheme = "EXTERNAL"
+  timeout_sec           = 10
+  enable_cdn            = true
+  # custom_request_headers  = ["X-Client-Geo-Location: {client_region_subdivision}, {client_city}"]
+  # custom_response_headers = ["X-Cache-Hit: {cdn_cache_status}"]
+  health_checks = [google_compute_health_check.webapp_autohealing.self_link] // slef link
+  backend {
+    group           = google_compute_region_instance_group_manager.webapp_instance_group[count.index].instance_group
+    balancing_mode  = "UTILIZATION"
+    capacity_scaler = 1.0
+  }
+}
+
+resource "google_compute_url_map" "instance_url" {
+  count           = var.replica
+  name            = "webapp-url-map"
+  default_service = google_compute_backend_service.webapp_load_balancer[count.index].self_link // self link
+}
+
+resource "google_compute_target_https_proxy" "instance_https" {
+  count   = var.replica
+  name    = "webapp-target-https-proxy"
+  url_map = google_compute_url_map.instance_url[count.index].id
+  ssl_certificates = [
+    google_compute_managed_ssl_certificate.webapp_ssl.self_link
+  ]
+
+  # ssl_certificates = [ "projects/cloudassignments-414405/global/sslCertificates/webapp-ssl-certificate" ]
+
+}
+
+# forwarding rule
+resource "google_compute_global_forwarding_rule" "instance_forward_rule" {
+  count                 = var.replica
+  name                  = "webapp-forward-rule"
+  ip_protocol           = "TCP"
+  load_balancing_scheme = "EXTERNAL"
+  port_range            = "443"
+  target                = google_compute_target_https_proxy.instance_https[count.index].self_link // self link
+  //ip_address            = google_compute_global_address.inetrnal_access[count.index].id
+  ip_address = google_compute_global_address.forward_address[count.index].id
+}
+
 
 
 
@@ -604,10 +794,10 @@ variable "cloud_function" {
 
     service_config = object({
       environment_variables = object({
-        MAILGUN_API_KEY   = string
-        MAILGUN_DOMAIN    = string
-        MAILGUN_FROM      = string
-        VERIFY_EMAIL_LINK = string
+        MAILGUN_API_KEY               = string
+        MAILGUN_DOMAIN                = string
+        MAILGUN_FROM                  = string
+        VERIFY_EMAIL_LINK             = string
         VERIFICATION_LINK_TIME_WINDOW = number
       })
       timeout_seconds                  = number
