@@ -391,37 +391,37 @@ resource "google_cloud_run_service_iam_member" "cloud_run_invoker" {
 
 //Assignment-08 Load Balancing changes
 resource "google_compute_managed_ssl_certificate" "webapp_ssl" {
-  name = "webapp-ssl-certificate"
+  name = var.webapp_ssl.name
 
   managed {
-    domains = ["nagalekha.me."]
+    domains = var.webapp_ssl.managed_domains
   }
 }
 
 resource "google_compute_global_address" "forward_address" {
   count   = var.replica
   project = var.project_id
-  name    = "load-address"
+  name    = var.forward_address.name
 }
 
 resource "google_compute_region_instance_template" "webapp_instance_template" {
   count          = var.replica
-  name           = "webapp-template"
-  machine_type   = "e2-medium"
-  can_ip_forward = false
+  name           = var.webapp_instance_template.name
+  machine_type   = var.webapp_instance_template.machine_type
+  can_ip_forward = var.webapp_instance_template.can_ip_forward
   region         = var.region
   tags           = [var.compute_engine.compute_engine_webapp_tag]
 
   disk {
     source_image = var.compute_engine.boot_disk_image
-    auto_delete  = true
-    boot         = true
+    auto_delete  = var.webapp_instance_template.disk.auto_delete
+    boot         = var.webapp_instance_template.disk.boot
     disk_size_gb = var.compute_engine.boot_disk_size
     disk_type    = var.compute_engine.boot_disk_type
 
   }
   reservation_affinity {
-    type = "ANY_RESERVATION"
+    type = var.webapp_instance_template.reservation_affinity_type
   }
 
   network_interface {
@@ -433,9 +433,9 @@ resource "google_compute_region_instance_template" "webapp_instance_template" {
   }
 
   scheduling {
-    preemptible       = false
-    automatic_restart = true
-  } //do not need verify
+    preemptible       = var.webapp_instance_template.scheduling.preemptible
+    automatic_restart = var.webapp_instance_template.scheduling.automatic_restart
+  }
 
   metadata_startup_script = "#!/bin/bash\nset -e\nsudo touch /opt/csye6225/webapp/.env\nsudo echo \"PORT=${var.env_port}\" > /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_NAME=${var.database.database_name}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_USERNAME=${var.database.database_user}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_PASSWORD=${random_password.webapp_db_password.result}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_HOST=${google_sql_database_instance.webapp_cloudsql_instance.ip_address.0.ip_address}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DATABASE_DIALECT=${var.env_db_dialect}\" >> /opt/csye6225/webapp/.env\nsudo echo \"DROP_DATABASE=${var.env_db_drop_db}\" >> /opt/csye6225/webapp/.env\nsudo echo \"TOPIC_VERIFY_EMAIL=${var.env_topic_verify_email}\" >> /opt/csye6225/webapp/.env\nsudo echo \"VERIFY_EMAIL_EXPIRY_MILLISECONDS=${var.env_verify_email_expiry_milliseconds}\" >> /opt/csye6225/webapp/.env\nsudo systemctl daemon-reload\nsudo systemctl restart webapp\nsudo systemctl daemon-reload\n"
 
@@ -445,46 +445,46 @@ resource "google_compute_region_instance_template" "webapp_instance_template" {
   }
 
   labels = {
-    gce-service-proxy = "on"
+    gce-service-proxy = var.webapp_instance_template.labels_gce_service_proxy
   } // not required
-  //add depends on cloud sql, sql user, compute address, ser acc,  
-  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector]
+
+  depends_on = [google_compute_subnetwork.webapp, google_compute_firewall.allow_iap, google_compute_firewall.deny_all, google_sql_database.webapp_db, google_sql_user.webapp_db_user, google_project_iam_binding.service_account_logging_admin, google_project_iam_binding.service_account_monitoring_metric_writer, google_pubsub_topic.verify_email_topic, google_pubsub_subscription.verify_email_subscription, google_vpc_access_connector.serverless_connector, google_compute_firewall.health_check_firewall]
 }
 
 resource "google_compute_health_check" "webapp_autohealing" {
-  name                = "webapp-autohealing"
-  check_interval_sec  = 5
-  timeout_sec         = 5
-  healthy_threshold   = 2
-  unhealthy_threshold = 2 # 50 seconds
+  name                = var.webapp_autohealing.name
+  check_interval_sec  = var.webapp_autohealing.check_interval_sec
+  timeout_sec         = var.webapp_autohealing.timeout_sec
+  healthy_threshold   = var.webapp_autohealing.healthy_threshold
+  unhealthy_threshold = var.webapp_autohealing.unhealthy_threshold # 50 seconds
 
   http_health_check {
-    port_name    = "http"
-    request_path = "/healthz"
-    port         = "8080"
+    port_name    = var.webapp_autohealing.http_health_check.port_name
+    request_path = var.webapp_autohealing.http_health_check.request_path
+    port         = var.webapp_autohealing.http_health_check.port
   }
 }
 
 resource "google_compute_region_instance_group_manager" "webapp_instance_group" {
   count                            = var.replica
-  name                             = "webapp-instance-group"
-  base_instance_name               = "webapp"
-  description                      = "Terraform instance group"
+  name                             = var.webapp_instance_group.name
+  base_instance_name               = var.webapp_instance_group.base_instance_name
+  description                      = var.webapp_instance_group.description
   region                           = var.region
-  distribution_policy_zones        = ["us-west4-a", "us-west4-b", "us-west4-c"]
-  distribution_policy_target_shape = "EVEN"
+  distribution_policy_zones        = var.webapp_instance_group.distribution_policy_zones
+  distribution_policy_target_shape = var.webapp_instance_group.distribution_policy_target_shape
 
   version {
     instance_template = google_compute_region_instance_template.webapp_instance_template[count.index].self_link
   }
   //target_size = 2
   named_port {
-    name = "http"
-    port = 8080
+    name = var.webapp_instance_group.named_port.name
+    port = var.webapp_instance_group.named_port.port
   }
   auto_healing_policies {
     health_check      = google_compute_health_check.webapp_autohealing.self_link // check with id or self link
-    initial_delay_sec = 300
+    initial_delay_sec = var.webapp_instance_group.auto_healing_policies.initial_delay_sec
   }
 
   lifecycle {
@@ -495,67 +495,74 @@ resource "google_compute_region_instance_group_manager" "webapp_instance_group" 
 
 resource "google_compute_region_autoscaler" "webapp_autoscaler" {
   count  = var.replica
-  name   = "my-region-autoscaler"
+  name   = var.webapp_autoscaler.name
   region = var.region
   target = google_compute_region_instance_group_manager.webapp_instance_group[count.index].id
 
   autoscaling_policy {
     //mode = "On: add and remove instances to the group"
-    max_replicas    = 9
-    min_replicas    = 3
-    cooldown_period = 60
+    max_replicas    = var.webapp_autoscaler.autoscaling_policy.max_replicas
+    min_replicas    = var.webapp_autoscaler.autoscaling_policy.min_replicas
+    cooldown_period = var.webapp_autoscaler.autoscaling_policy.cooldown_period
 
     cpu_utilization {
-      target = 0.05
+      target = var.webapp_autoscaler.autoscaling_policy.cpu_utilization.target
     }
   }
 
 }
 
-resource "google_compute_firewall" "default" {
+resource "google_compute_firewall" "health_check_firewall" {
   count     = var.replica
-  name      = "health-check-firewall"
-  direction = "INGRESS"
+  name      = var.health_check_firewall.name
+  direction = var.health_check_firewall.direction
   network   = google_compute_network.vpc[count.index].self_link
-  //source_ranges = [google_compute_global_address.forward_address[count.index].address]
 
-  source_ranges = ["130.211.0.0/22", "35.191.0.0/16"]
+  source_ranges = var.health_check_firewall.source_ranges
 
   allow {
-    protocol = "tcp"
-    ports    = ["8080"] //should be 443
+    protocol = var.health_check_firewall.allow.protocol
+    ports    = var.health_check_firewall.allow.ports
   }
   target_tags = [var.compute_engine.compute_engine_webapp_tag]
+
+  priority = var.firewall_allow.firewall_allow_priority
+
+  depends_on = [google_compute_network.vpc]
 }
 
 # backend service with custom request and response headers
 resource "google_compute_backend_service" "webapp_load_balancer" {
   count                 = var.replica
-  name                  = "webapp-backend-service"
-  protocol              = "HTTP"
-  port_name             = "http"
-  load_balancing_scheme = "EXTERNAL"
-  timeout_sec           = 10
-  enable_cdn            = true
+  name                  = var.webapp_load_balancer.name
+  protocol              = var.webapp_load_balancer.protocol
+  port_name             = var.webapp_load_balancer.port_name
+  load_balancing_scheme = var.webapp_load_balancer.load_balancing_scheme
+  timeout_sec           = var.webapp_load_balancer.timeout_sec
+  enable_cdn            = var.webapp_load_balancer.enable_cdn
+
   # custom_request_headers  = ["X-Client-Geo-Location: {client_region_subdivision}, {client_city}"]
   # custom_response_headers = ["X-Cache-Hit: {cdn_cache_status}"]
+
   health_checks = [google_compute_health_check.webapp_autohealing.self_link] // slef link
   backend {
     group           = google_compute_region_instance_group_manager.webapp_instance_group[count.index].instance_group
-    balancing_mode  = "UTILIZATION"
-    capacity_scaler = 1.0
+    balancing_mode  = var.webapp_load_balancer.backend.balancing_mode
+    capacity_scaler = var.webapp_load_balancer.backend.capacity_scaler
   }
 }
 
 resource "google_compute_url_map" "instance_url" {
   count           = var.replica
-  name            = "webapp-url-map"
+  name            = var.instance_url.name
   default_service = google_compute_backend_service.webapp_load_balancer[count.index].self_link // self link
+
+  depends_on = [google_compute_backend_service.webapp_load_balancer]
 }
 
 resource "google_compute_target_https_proxy" "instance_https" {
   count   = var.replica
-  name    = "webapp-target-https-proxy"
+  name    = var.instance_https.name
   url_map = google_compute_url_map.instance_url[count.index].id
   ssl_certificates = [
     google_compute_managed_ssl_certificate.webapp_ssl.self_link
@@ -568,13 +575,15 @@ resource "google_compute_target_https_proxy" "instance_https" {
 # forwarding rule
 resource "google_compute_global_forwarding_rule" "instance_forward_rule" {
   count                 = var.replica
-  name                  = "webapp-forward-rule"
-  ip_protocol           = "TCP"
-  load_balancing_scheme = "EXTERNAL"
-  port_range            = "443"
+  name                  = var.instance_forward_rule.name
+  ip_protocol           = var.instance_forward_rule.ip_protocol
+  load_balancing_scheme = var.instance_forward_rule.load_balancing_scheme
+  port_range            = var.instance_forward_rule.port_range
   target                = google_compute_target_https_proxy.instance_https[count.index].self_link // self link
   //ip_address            = google_compute_global_address.inetrnal_access[count.index].id
   ip_address = google_compute_global_address.forward_address[count.index].id
+
+  depends_on = [google_compute_target_https_proxy.instance_https, google_compute_global_address.forward_address]
 }
 
 
@@ -816,6 +825,154 @@ variable "cloud_function" {
       resource     = string
       retry_policy = string
     })
+  })
+}
+
+variable "webapp_ssl" {
+  description = "values for ssl certificate"
+  type = object({
+    name            = string
+    managed_domains = list(string)
+  })
+}
+
+variable "forward_address" {
+  description = "values for forward address"
+  type = object({
+    name = string
+  })
+}
+
+variable "webapp_instance_template" {
+  description = "values for webapp instance template"
+  type = object({
+    name           = string
+    machine_type   = string
+    can_ip_forward = bool
+
+    disk = object({
+      auto_delete = bool
+      boot        = bool
+    })
+
+    reservation_affinity_type = string
+
+    scheduling = object({
+      preemptible       = bool
+      automatic_restart = bool
+    })
+
+    labels_gce_service_proxy = string
+  })
+}
+
+variable "webapp_autohealing" {
+  description = "values for webapp autohealing"
+  type = object({
+    name                = string
+    check_interval_sec  = number
+    timeout_sec         = number
+    healthy_threshold   = number
+    unhealthy_threshold = number
+
+    http_health_check = object({
+      port_name    = string
+      request_path = string
+      port         = string
+    })
+  })
+}
+
+variable "webapp_instance_group" {
+  description = "Webapp Managed Instance Group variables"
+  type = object({
+    name                             = string
+    base_instance_name               = string
+    description                      = string
+    distribution_policy_zones        = list(string)
+    distribution_policy_target_shape = string
+
+    named_port = object({
+      name = string
+      port = number
+    })
+
+    auto_healing_policies = object({
+      initial_delay_sec = number
+    })
+
+  })
+}
+
+variable "webapp_autoscaler" {
+  description = "Webapp Autoscaler variables"
+  type = object({
+    name = string
+
+    autoscaling_policy = object({
+      max_replicas    = number
+      min_replicas    = number
+      cooldown_period = number
+
+      cpu_utilization = object({
+        target = number
+      })
+    })
+  })
+}
+
+variable "health_check_firewall" {
+  description = "Health Check Firewall variables"
+  type = object({
+    name          = string
+    direction     = string
+    source_ranges = list(string)
+
+    allow = object({
+      protocol = string
+      ports    = list(string)
+    })
+  })
+}
+
+variable "webapp_load_balancer" {
+  description = "Webapp Load Balancer (Backend Service) variables"
+  type = object({
+    name                  = string
+    protocol              = string
+    port_name             = string
+    load_balancing_scheme = string
+    timeout_sec           = number
+    enable_cdn            = bool
+
+    backend = object({
+      balancing_mode  = string
+      capacity_scaler = number
+    })
+  })
+}
+
+variable "instance_url" {
+  description = "Instance URL Map variables"
+  type = object({
+    name = string
+  })
+}
+
+variable "instance_https" {
+  description = "Instance HTTPS Proxy variables"
+  type = object({
+    name = string
+  })
+}
+
+variable "instance_forward_rule" {
+  description = "Instance Forwarding Rule variables"
+  type = object({
+    name                  = string
+    ip_protocol           = string
+    load_balancing_scheme = string
+    port_range            = string
   })
 }
 
